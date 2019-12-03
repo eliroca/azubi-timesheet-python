@@ -16,12 +16,9 @@ class Timesheet(object):
         :param args: argparse.Namespace object
         :param str config_file: Name of configuration file
         """
-        super(Timesheet, self).__init__()
-        self.configure_attr(args, config_file)
-
-    def configure_attr(self, args, config_file):
-        """Initializes instance attributes.
-        """
+        # toms: This is unneccessary as object doesn't initalize anything:
+        # super(Timesheet, self).__init__()
+        # toms: I also removed configure_attr as it isn't called from anywhere
         self.args = args
         self.config = self.load_json_file(config_file)
         if self.config == None:
@@ -31,6 +28,8 @@ class Timesheet(object):
         self.month_str = self.args.date.strftime("%m")
         self.year = self.args.date.year
 
+        # toms: can you absolutely be sure, that self.config contains the key
+        # 'records_dir'? If not, it will easily raise a KeyError exception. ;)
         self.records_file = os.path.join(self.config["records_dir"], "timesheet_{}_{}.json".format(self.year, self.month_str))
         self.records = self.load_json_file(self.records_file, [])
 
@@ -41,6 +40,7 @@ class Timesheet(object):
         :param date end_date: Date where to stop counting
         :param list holidays: List of holidays, date objects
         :param list weekend_days: List of days included in weekend; 5=sat, 6=sun
+                as specified in :func:`datetime.datetime.weekday`
         :return: Integer number of workdays
         """
         delta_days = (end_date - start_date).days + 1
@@ -145,6 +145,10 @@ class Timesheet(object):
     def export(self):
         """Export timesheet as .xlsx file
         """
+        # toms: IMHO, a class or library should only raise an exception here 
+        # and NOT exit the script; that is the responsibility of the caller.
+        # In your case, you should raise an exception and catch it in main
+        # (or wherever it is useful)
         if len(self.records) == 0:
             exit_message = "Exiting. There are no records for {} {} to export.".format(self.args.date.strftime("%B"), self.year)
             sys.exit(exit_message)
@@ -153,6 +157,19 @@ class Timesheet(object):
         start_month = self.args.date.replace(day = 1)
         end_month = self.args.date.replace(day = total_days)
         workdays = self.netto_workdays(start_month, end_month, weekend_days=(5,6))
+
+        # toms: again, are you really sure, self.config contains ALWAYS the keys
+        # "templates_dir" and "exports_dir"? If not, you get an KeyError exception.
+        #
+        # Actually, after looking into "config.json", if you only need to access
+        # directories relative to this script, why not use this:
+        #
+        # DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        # template_file = os.path.join(DATA_DIR, "template_timesheet_{}_days.xlsx".format(workdays))
+        #
+        # You could use it for the other directories too to define this as
+        # "default behaviour". That makes this config.json file obsolete and you
+        # could simplify your code. ;)
         template_file = os.path.join(self.config["templates_dir"], "template_timesheet_{}_days.xlsx".format(workdays))
 
         export_file = os.path.join(self.config["exports_dir"], "timesheet_{}_{}.xlsx".format(self.year, self.month_str))

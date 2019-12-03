@@ -14,6 +14,11 @@ import argparse
 import datetime
 from timesheet import Timesheet
 
+__author__ = "Elisei Roca"
+__version__ = "0.9"
+__prog__ = os.path.basename(sys.argv[0])
+
+
 def execute(args):
     """Checks which subcommand was given and executes it.
 
@@ -21,6 +26,8 @@ def execute(args):
     :type args: :class:`argparse.Namespace`
     """
     timesheet = Timesheet(args, config_file="config.json")
+    # toms: you can avoid this if...elif.. cascade with a function map,
+    # see FUNC_MAP below.
     if args.subcommand == "add":
         if not timesheet.add_record():
             print("Exiting. Record already exists.")
@@ -48,25 +55,33 @@ def check_date(date, non_interactive, message, attempts=3):
     :return: Validated date object: date(year, month, day)
     :rtype: datetime.date
     """
-    # Example of match dict: {'day': '3', 'month': '10', 'year': '2019'}
-    regex = r'(?P<day>[0-9]{1,2})([\.,-])(?P<month>[0-9]{1,2})([\.,-])(?P<year>[0-9]{4})'
+
     if non_interactive:
         attempts = 1
     while attempts:
         if not date and not non_interactive:
             date = input(message)
-        match = re.match(regex, date)
-        if match:
-            year = int(match.group("year"))
-            month = int(match.group("month"))
-            day = int(match.group("day"))
-            date = datetime.date(year, month, day)
+        try:
+            date = datetime.datetime.strptime(date, "%d.%m.%Y")
             return date
-        else:
-            attempts -= 1
-            date = ""
-            print("Expected date of following format: 'DD.MM.YYYY'")
-    print("Exiting. You entered invalid date or didn't enter any input.")
+        except ValueError as error:
+            print("Expected date of following format: 'DD.MM.YYYY'",
+                  error,
+                  file=sys.stderr)
+        attempts -= 1
+        date = ""
+
+    # toms: I'd recommend to raise an exception here and catch it in main.
+    # Then you don't need to exit the script here, main would be responsible
+    # for example:
+    # raise RuntimeError(...)
+    # raise SystemExit(...)
+    # or create your own exception:
+    # class TimesheetError(ValueError):
+    #    pass
+    # raise TimesheetError(...)
+    print("Exiting. You entered invalid date or didn't enter any input.",
+          file=sys.stderr)
     sys.exit(1)
 
 def check_time_interval(time_interval, non_interactive, name="", attempts=3):
@@ -79,31 +94,40 @@ def check_time_interval(time_interval, non_interactive, name="", attempts=3):
     :return: Two validated time objects: time(hour, minute)
     :rtype: tuple(datetime.time, datetime.time)
     """
-    # Example of match dict: {'start_hour': '09', 'start_minute': '00',
-    #                         'end_hour': '17', 'end_minute': '30'}
-    regex = r"(?P<start_hour>[0-9]|0[0-9]|1[0-9]|2[0-3])(:)"\
-             "(?P<start_minute>[0-5][0-9])([\-])"\
-             "(?P<end_hour>[0-9]|0[0-9]|1[0-9]|2[0-3])(:)"\
-             "(?P<end_minute>[0-5][0-9])"
+
     if non_interactive:
         attempts = 1
     while attempts:
         if not time_interval and not non_interactive:
             time_interval = input("- Enter the BEGIN and END {}: ".format(name))
-        match = re.match(regex, time_interval)
-        if match:
-            start_hour = int(match.group("start_hour"))
-            start_minute = int(match.group("start_minute"))
-            end_hour = int(match.group("end_hour"))
-            end_minute = int(match.group("end_minute"))
-            start_time = datetime.time(start_hour, start_minute)
-            end_time = datetime.time(end_hour, end_minute)
-            return start_time, end_time
-        else:
-            attempts -= 1
-            time_interval = ""
-            print("Expected {} of following format: 'HH:MM-HH:MM'".format(name))
-    print("Exiting. You entered invalid {} or didn't enter any input.".format(name))
+
+        # toms: Acutally, you don't need this regex. You can replace it
+        # with: datetime.datetime.strptime(date_string, "%H:%M")
+        # If you pass an invalid date/time, you get a ValueError exception
+        # But better check my code. ;-)
+
+        try:
+            start, end = time_interval.split("-")
+            start = datetime.datetime.strptime(start, "%H:%M")
+            end = datetime.datetime.strptime(end, "%H:%M")
+            return start.time(), end.time()
+        except ValueError:
+            print("Expected {} of following format: 'HH:MM-HH:MM'".format(name),
+                  file=sys.stderr)
+        attempts -= 1
+        time_interval = ""
+
+    # toms: I'd recommend to raise an exception here and catch it in main.
+    # Then you don't need to exit the script here, main would be responsible
+    # for example:
+    # raise RuntimeError(...)
+    # raise SystemExit(...)
+    # or create your own exception:
+    # class TimesheetError(ValueError):
+    #    pass
+    # raise TimesheetError(...)
+    print("Exiting. You entered invalid {} or didn't enter any input.".format(name),
+          file=sys.stderr)
     sys.exit(1)
 
 def check_args(args):
@@ -114,7 +138,10 @@ def check_args(args):
     """
     # checking date
     args.date = check_date(args.date, args.non_interactive, "- Enter the DATE of record: ")
-    if not args.subcommand in ["delete", "export"]:
+
+    # toms: This special check may not be necessary, if you use subparsers
+    # see below
+    if not args.subcommand in ("delete", "export"):
         # checking comment
         if not args.comment and not args.non_interactive:
             args.comment=input("- Enter the COMMENT of record, if needed: ")
@@ -135,13 +162,35 @@ def parse_cli(args=None):
     :rtype: :class:`argparse.Namespace`
     """
     parser=argparse.ArgumentParser(description=__doc__,
-                                     prog="azubi-timesheet",
+                                     prog=__prog__,
                                      add_help=False)
     parser.add_argument("-v", "--version",
                         action="version",
-                        version="%(prog)s v0.9",
+                        version="%(prog)s {}".format(__version__),
                         help="Show program's version number and exit."
                         )
+    # toms: Maybe better create subparsers for this.
+    # For an example, look at:
+    # https://gist.github.com/tomschr/8bfb228b68c52e8b6686213d89c842d5
+    # Python doc:
+    # https://docs.python.org/3/library/argparse.html#argparse.ArgumentParser.add_subparsers
+    #
+    # If you still would like to use this approach, I would propose this
+    # alternative:
+    #
+    # 1. Define your subcommand functions, for example:
+    #    def func_add(args):  # args would be :class:`argparse.Namespace`
+    #
+    # 2. Create function map like with keys as command names and keys as functions
+    #    like this:
+    #    FUNC_MAP = { 'add': func_add, 'delete': func_delete, ...}
+    #    parser.add_argument(action="store", dest="subcommand", nargs="?", help="...",
+    #                        choices=FUNC_MAP.keys(), )
+    #
+    # To call the requested subcommand, use:
+    #
+    #   func = FUNC_MAP[args.command]
+    #   func()
     parser.add_argument(action="store",
                         dest="subcommand",
                         metavar="add | delete | update | export",
