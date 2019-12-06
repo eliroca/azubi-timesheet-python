@@ -1,6 +1,15 @@
 {
   "name": "Elisei Roca",
-  "exports_dir": "data/exports",
-  "records_dir": "data/records",
-  "templates_dir": "data/templates"
+  "exports": {
+    "exports_dir": "data/exports",
+    "exports_name": "timesheet_{}_{}.xlsx"
+  },
+  "records": {
+    "records_dir": "data/records",
+    "records_name": "timesheet_{}_{}.json"
+  },
+  "templates": {
+    "templates_dir": "data/templates",
+    "templates_name": "template_timesheet_{}_days.xlsx"
+  }
 }

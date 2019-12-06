@@ -24,7 +24,10 @@ class Timesheet(object):
         :param datetime.date date: Date of the records that are to be loaded,
             only year and month are relevant
         """
-        self.records_file = os.path.join(self.config["records_dir"], "timesheet_{}_{}.json".format(date.year, date.strftime("%m")))
+        self.records_file = os.path.join(
+            self.config["records"]["records_dir"],
+            self.config["records"]["records_name"].format(date.year, date.strftime("%m"))
+        )
         self.records = self.load_json_file(self.records_file, [])
 
     def netto_workdays(self, start_date, end_date, holidays=[], weekend_days=[5,6]):
@@ -158,6 +161,20 @@ class Timesheet(object):
                 return True
         return False
 
+    def extract_carryover_hours(self, file):
+        """Reads excel file, returns carryover hours.
+
+        :param str file: name of file to read
+        return: number of carryover hours from file
+        """
+        try:
+            wb = load_workbook(file, data_only=True)
+        except FileNotFoundError:
+            return 0
+        row = wb["Logging"].cell(row=2, column=2).value
+        column = wb["Logging"].cell(row=3, column=2).value
+        return wb["Timesheet"].cell(row=row, column=column).value
+
     def export(self, date):
         """Export timesheet as .xlsx file
 
@@ -172,17 +189,28 @@ class Timesheet(object):
         start_month = date.replace(day = 1)
         end_month = date.replace(day = total_days)
         workdays = self.netto_workdays(start_month, end_month, weekend_days=(5,6))
-        template_file = os.path.join(self.config["templates_dir"], "template_timesheet_{}_days.xlsx".format(workdays))
+        template_file = os.path.join(self.config["templates"]["templates_dir"],
+            self.config["templates"]["templates_name"].format(workdays))
 
-        export_file = os.path.join(self.config["exports_dir"], "timesheet_{}_{}.xlsx".format(date.year, date.strftime("%m")))
+        export_file = os.path.join(
+            self.config["exports"]["exports_dir"],
+            self.config["exports"]["exports_name"].format(date.year, date.strftime("%m"))
+        )
+        prev_month = (start_month - timedelta(days=1)).strftime("%m")
+        prev_export_file = os.path.join(
+            self.config["exports"]["exports_dir"],
+            self.config["exports"]["exports_name"].format(self.year, prev_month)
+        )
+        carryover_hours = self.extract_carryover_hours(prev_export_file)
 
         # set locale to use weekdays, months full name in german
         locale.setlocale(locale.LC_TIME, 'de_DE.UTF-8')
         wb = load_workbook(template_file)
-        ws = wb.active
+        ws = wb["Timesheet"]
         ws.cell(row=7, column=4).value = self.config["name"]
         month_year_str = "{} {}".format(date.strftime("%B"), date.year)
         ws.cell(row=8, column=4).value = month_year_str
+        ws.cell(row=8, column=10).value = carryover_hours
         row = 12
         for record in self.records:
             col = 2
@@ -191,7 +219,7 @@ class Timesheet(object):
             col += 1
             ws.cell(row=row, column=col).value = record_date
             col += 1
-            if "special" in record.keys() and record["special"] == "true":
+            if "special" in record.keys() and record["special"] == "True":
                 ws.cell(row=row, column=9).value = 8.00
                 col += 4
             else:
